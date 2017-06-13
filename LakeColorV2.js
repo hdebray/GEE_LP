@@ -4,49 +4,35 @@ var start = ee.Date('2016-06-01');
 var end = ee.Date('2016-07-15');
 
 
-//Mask to get the lakes in the test
-var someLakes = lake288.filterBounds(geometry);
-var lakesImage = someLakes
-   .reduceToImage({
-    properties: ['OBJECTID'],
-    reducer: ee.Reducer.firstNonNull()
-});
-var lakeMask = ee.Image(lakesImage).mask();
+//This function creates a mask to get the lakes 
 
 var justLake = function(image) {
+	var lakesImage = lake288
+    .reduceToImage({
+    properties: ['OBJECTID'],
+    reducer: ee.Reducer.firstNonNull()
+    });
+    var lakeMask = ee.Image(lakesImage).mask();
   return image
   .updateMask(lakeMask)
   ;
 };
 
 
-
 // This function masks non-water pixels.
 
-var lakesByLandsat8TOA = Landsat8Collection
-  .filterDate(start, end)
-  .filterBounds(geometry)
-  .filterBounds(lake288)
-  .map(justLake);
-
 var land_water = function(image){
-     //var bands_256 = image.expression(
-     //"b('B4') >= 1500 && b('B4') <= 8500 && b('B3') >= 0 && b('B3') <= 1500 && b('B1') >= 1500 && b('B1') <= 5500");
     var maks_band = image.select('fmask');
-    var mask_band = maks_band.updateMask(maks_band.eq(1));//.updateMask(bands_256)
+    var mask_band = maks_band.updateMask(maks_band.eq(1));
     return image.updateMask(mask_band);
   };
 
 
-
-// Function applying the masks on the Landsat 8 images. 
+// Function applying the masks 
 
 var imageFiltered = function(imageCollection){
   return (imageCollection)
  .filterDate(start,end)
- //filtre pour les tests
- .filterBounds(geometry)
- .filterBounds(lake288)
  .map(justLake)
  .map(land_water)
  .mosaic();
@@ -59,56 +45,52 @@ var meanLakeColor = function(feature,mosaic){
 
 return ee.Image(mosaic).reduceRegions({
   collection: feature,
-  reducer: ee.Reducer.mean(),
+  reducer: ee.Reducer.median(),
   scale: 30,
 });
 };
 
 
+// Return the different rates between B1,2,3,4 spectral bands
 
-//À faire marcher
 var getColorsRate = function(feature){
-feature.reduceToImage({
-    properties: ['B4','B3','B2','B1'],
+
+var imB1 = feature.reduceToImage({
+    properties: ['B1'],
     reducer: ee.Reducer.firstNonNull()
 });
-var B4 = ee.Number(feature.select(['B4']));
-var B3 = ee.Number(feature.select(['B3']));
-var B2 = ee.Number(feature.select(['B2']));
-var B1 = ee.Number(feature.select(['B1']));
-/*var B1divB3 = B1.divide(B3).multiply(1000).round().divide(1000);//.rename('B1divB3');
-var B2divB3 = B2.divide(B3).multiply(1000).round().divide(1000);//.rename('B2divB3');
-var B3divB4 = B3.divide(B4).multiply(1000).round().divide(1000);//.rename('B3divB4');
-var B1divB4 = B1.divide(B4).multiply(1000).round().divide(1000);//.rename('B1divB4');
-var B2divB4 = B2.divide(B4).multiply(1000).round().divide(1000);//.rename('B2divB4');
-//var img = B1divB3.addBands(B2divB3).addBands(B2divB3).addBands(B1divB4).addBands(B2divB4);
-};*/
+var imB2 = feature.reduceToImage({
+    properties: ['B2'],
+    reducer: ee.Reducer.firstNonNull()
+});
+var imB3 = feature.reduceToImage({
+    properties: ['B3'],
+    reducer: ee.Reducer.firstNonNull()
+});
+var imB4 = feature.reduceToImage({
+    properties: ['B4'],
+    reducer: ee.Reducer.firstNonNull()
+});
+var imageImtermediaire = imB1.addBands(imB2).addBands(imB3).addBands(imB4);
+var imageTotale = imageImtermediaire.select(['first','first_1','first_2','first_3'],['B1','B2','B3','B4']);
+var B1divB3 = imB1.divide(imB3).multiply(1000).round().divide(1000).rename('B1divB3');
+var B2divB3 = imB2.divide(imB3).multiply(1000).round().divide(1000).rename('B2divB3');
+var B3divB4 = imB3.divide(imB4).multiply(1000).round().divide(1000).rename('B3divB4');
+var B1divB4 = imB1.divide(imB4).multiply(1000).round().divide(1000).rename('B1divB4');
+var B2divB4 = imB2.divide(imB4).multiply(1000).round().divide(1000).rename('B2divB4');
+var img = B1divB3.addBands(B2divB3).addBands(B3divB4).addBands(B1divB4).addBands(B2divB4);
+return img;
+};
 
 
-// TEST
+// Global function
 
-// variables pour les tests
-
-var LakesColor = imageFiltered(Landsat8Collection);
-
-var meanLakesColor = meanLakeColor(someLakes,LakesColor);
-
-var newFeature = getColorsRate(meanLakesColor);
+var MainLakeColor = function (lakes,imageCollection) {
+ return getColorsRate(meanLakeColor(lakes,imageFiltered(imageCollection)));
+ };
 
 
 // Display test
 
-
-Map.addLayer(newFeature);
-//Map.addLayer(LakesColor,imageVisParamLandsat,'Test');
-//Map.addLayer(imageLandsat,imageVisParamLandsatMean,'Lacs par Landsat' );
-//Map.addLayer(lake288.filterBounds(geometry),{}, 'lacs');
-
-
-
-
-
-
-
-
-
+Map.addLayer(MainLakeColor(lake288,Landsat8Collection));
+Map.addLayer(lake288,{}, 'lacs');
